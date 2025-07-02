@@ -15,7 +15,7 @@
         h1, .font-fredoka {
             font-family: 'Fredoka One', cursive;
         }
-        /* Estilos de impresión */
+        /* Estilos de impresión (se mantiene por si acaso) */
         @media print {
             body * {
                 visibility: hidden;
@@ -87,11 +87,14 @@
             </div>
             
             <div class="text-center mt-6">
-                <button id="print-btn" class="hidden font-fredoka bg-green-500 text-white py-3 px-8 rounded-lg shadow-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-transform transform hover:scale-105">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="inline-block h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v6a2 2 0 002 2h1v-4a1 1 0 011-1h8a1 1 0 011 1v4h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm-6 8a1 1 0 100 2h8a1 1 0 100-2H7z" clip-rule="evenodd" /></svg>
-                    Imprimir Página
+                <!-- ===== BOTÓN CAMBIADO A DESCARGAR ===== -->
+                <button id="download-btn" class="hidden font-fredoka bg-green-500 text-white py-3 px-8 rounded-lg shadow-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-transform transform hover:scale-105">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="inline-block h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Descargar Imagen
                 </button>
-                 <div id="error-message" class="text-red-500 mt-4"></div>
+                 <div id="error-message" class="text-red-500 mt-4 font-semibold text-center"></div>
             </div>
 
             <!-- ===== SECCIÓN DE DONACIÓN ===== -->
@@ -166,12 +169,13 @@
         // --- Elementos del DOM ---
         const promptSelect = document.getElementById('prompt-select');
         const generateBtn = document.getElementById('generate-btn');
-        const printBtn = document.getElementById('print-btn');
+        const downloadBtn = document.getElementById('download-btn'); // ID actualizado
         const loader = document.getElementById('loader');
         const placeholder = document.getElementById('placeholder');
         const imageWrapper = document.getElementById('image-wrapper');
         const coloringImage = document.getElementById('coloring-image');
         const errorMessage = document.getElementById('error-message');
+        const outputContainer = document.getElementById('output-container');
 
         // --- Funciones ---
 
@@ -200,21 +204,25 @@
             // Actualizar UI para estado de carga
             placeholder.classList.add('hidden');
             imageWrapper.classList.add('hidden');
-            printBtn.classList.add('hidden');
+            downloadBtn.classList.add('hidden'); // Ocultar botón de descarga
             loader.classList.remove('hidden');
             generateBtn.disabled = true;
             generateBtn.textContent = 'Creando...';
             errorMessage.textContent = '';
+            outputContainer.innerHTML = ''; // Limpiar el contenedor de salida
+            outputContainer.appendChild(loader);
+
 
             try {
                 // Construir el prompt para la API
                 const apiPrompt = `A coloring book page for children, thick black outlines, no color, white background, simple clean lines, whimsical friendly monster style. The scene is: ${selectedPrompt}`;
                 
-                const payload = { 
+                const payload = {
                     instances: [{ prompt: apiPrompt }],
                     parameters: { "sampleCount": 1 }
                 };
-                const apiKey = ""; // Ah
+                
+                const apiKey = "AIzaSyCd7za13YOC_pmQ5MBGrgVyUZSzyZwgua4";
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
 
                 const response = await fetch(apiUrl, {
@@ -224,7 +232,11 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Error en la solicitud a la API: ${response.statusText}`);
+                    const errorBody = await response.json().catch(() => null);
+                    const status = response.status;
+                    const statusText = response.statusText;
+                    const serverMessage = errorBody?.error?.message || 'No hay mensaje del servidor.';
+                    throw new Error(`Error ${status} (${statusText}): ${serverMessage}`);
                 }
 
                 const result = await response.json();
@@ -232,16 +244,62 @@
                 if (result.predictions && result.predictions.length > 0 && result.predictions[0].bytesBase64Encoded) {
                     const imageUrl = `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
                     coloringImage.src = imageUrl;
+                    outputContainer.innerHTML = ''; // Limpiar el loader
+                    outputContainer.appendChild(imageWrapper);
                     imageWrapper.classList.remove('hidden');
-                    printBtn.classList.remove('hidden');
+                    downloadBtn.classList.remove('hidden'); // Mostrar botón de descarga
                 } else {
                     throw new Error('La respuesta de la API no contiene una imagen válida.');
                 }
 
             } catch (error) {
                 console.error('Error al generar la imagen:', error);
-                errorMessage.textContent = '¡Uy! Algo salió mal. Por favor, intenta de nuevo.';
-                placeholder.classList.remove('hidden'); // Mostrar el placeholder de nuevo en caso de error
+                
+                // --- MANEJO DE ERRORES MEJORADO ---
+                outputContainer.innerHTML = ''; // Limpiar el loader
+                if (error.message.includes("Generative Language API has not been used")) {
+                    const projectNumber = error.message.match(/project\/(\d+)/)?.[1] || 'tu-proyecto';
+                    const enableApiUrl = `https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview?project=${projectNumber}`;
+                    outputContainer.innerHTML = `
+                        <div class="bg-orange-100 border-l-4 border-orange-500 text-orange-700 p-4 rounded-lg w-full" role="alert">
+                          <div class="flex">
+                            <div class="py-1"><svg class="fill-current h-6 w-6 text-orange-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M10 0C4.48 0 0 4.48 0 10s4.48 10 10 10 10-4.48 10-10S15.52 0 10 0zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-5h2v2h-2v-2zm0-8h2v6h-2V5z"/></svg></div>
+                            <div>
+                              <p class="font-bold">Acción Requerida: Habilitar API</p>
+                              <p class="text-sm mt-1">La "Generative Language API" está desactivada en tu proyecto de Google. Debes habilitarla para continuar.</p>
+                              <a href="${enableApiUrl}" target="_blank" rel="noopener noreferrer" class="mt-3 inline-block bg-orange-500 text-white font-bold py-2 px-4 rounded hover:bg-orange-700 text-sm">
+                                Haz clic aquí para Habilitar la API
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                    `;
+                } else if (error.message.includes("billed users")) {
+                    outputContainer.innerHTML = `
+                        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg w-full" role="alert">
+                          <div class="flex">
+                            <div class="py-1"><svg class="fill-current h-6 w-6 text-red-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M10 0C4.48 0 0 4.48 0 10s4.48 10 10 10 10-4.48 10-10S15.52 0 10 0zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-5h2v2h-2v-2zm0-8h2v6h-2V5z"/></svg></div>
+                            <div>
+                              <p class="font-bold">Acción Requerida: Habilitar Facturación</p>
+                              <p class="text-sm mt-1">Google requiere una cuenta de facturación activa para usar esta API. El código es correcto, el problema es la configuración de tu cuenta de Google.</p>
+                              <a href="https://console.cloud.google.com/billing" target="_blank" rel="noopener noreferrer" class="mt-3 inline-block bg-red-500 text-white font-bold py-2 px-4 rounded hover:bg-red-700 text-sm">
+                                Ir a Google Billing para solucionarlo
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                    `;
+                } else if (error instanceof TypeError) {
+                     outputContainer.innerHTML = `
+                        <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-lg w-full" role="alert">
+                          <p class="font-bold">Error de Red o CORS</p>
+                          <p class="text-sm mt-1">Revisa la configuración de tu Clave de API en Google Cloud. Asegúrate de que los dominios (<span class="font-mono">*.codepen.io/*</span>) estén permitidos y espera 5 minutos después de guardar.</p>
+                        </div>
+                    `;
+                } else {
+                    outputContainer.innerHTML = `<p class="text-red-500">¡Uy! Algo salió mal: ${error.message}</p>`;
+                }
+                
             } finally {
                 // Restaurar UI
                 loader.classList.add('hidden');
@@ -251,16 +309,24 @@
         }
 
         /**
-         * Imprime la página.
+         * Descarga la imagen generada.
          */
-        function printImage() {
-            window.print();
+        function downloadImage() {
+            const imageUrl = coloringImage.src;
+            if (!imageUrl) return;
+
+            const link = document.createElement('a');
+            link.href = imageUrl;
+            link.download = 'monstruo-para-colorear.png'; // Nombre del archivo
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
 
         // --- Inicialización y Event Listeners ---
         window.onload = populatePrompts;
         generateBtn.addEventListener('click', generateImage);
-        printBtn.addEventListener('click', printImage);
+        downloadBtn.addEventListener('click', downloadImage); // Evento actualizado
     </script>
 </body>
 </html>
